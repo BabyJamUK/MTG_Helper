@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draft Tracker</title>
+<style>
+:root{--bg:#eef0f6;--ink:#1b1f3b;--mute:#666b8a;--card:#fff;--line:#d9dcea;--acc:#4f43d6;--ok:#1f8a63;--warn:#c4571a}
+@media(prefers-color-scheme:dark){:root{--bg:#14162b;--ink:#eceefb;--mute:#9aa0c4;--card:#1d2040;--line:#2e3260;--acc:#8b81ff;--ok:#4fcf9c;--warn:#f08a50}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;padding:16px;max-width:640px;margin:auto}
+h1{font-size:22px;margin:4px 0 12px}
+h2{font-size:15px;margin:0 0 8px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+input,select,button{font:inherit;color:inherit;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--bg)}
+button{background:var(--acc);color:#fff;border:0;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>input[type=text]{flex:1;min-width:160px}
+#manual{display:none;margin-top:8px}
+#manual.show{display:flex}
+#manual input{width:90px}
+#msg{font-size:14px;color:var(--mute);margin:8px 0 0;min-height:20px}
+.types{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.t{border:1px solid var(--line);border-radius:8px;padding:8px}
+.t b{font-size:22px}
+.t small{display:block;color:var(--mute)}
+.ok b{color:var(--ok)}.warn b{color:var(--warn)}
+.curve{display:flex;align-items:flex-end;gap:6px;height:130px}
+.col{flex:1;text-align:center;font-size:12px;color:var(--mute);display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+.plot{flex:1;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.tgt{position:absolute;left:-2px;right:-2px;border-top:2px dashed var(--warn)}
+.seg{display:flex;gap:6px;margin-bottom:8px}.seg label{flex:1;text-align:center;border:1px solid var(--line);border-radius:8px;padding:6px;font-size:14px;cursor:pointer}.seg input{position:absolute;opacity:0}.seg label:has(input:checked){background:var(--acc);color:#fff;border-color:var(--acc)}.seg label:has(input:focus-visible){outline:3px solid var(--acc);outline-offset:2px}
+li select{padding:2px 6px;font-size:13px;margin-top:4px}
+.lsel{display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:14px}
+.lsel select{padding:6px}
+.split{font-size:17px;font-weight:600;margin:4px 0}
+.acts{display:flex;gap:6px;flex-shrink:0}
+li button.star{font-size:16px;line-height:1;padding:4px 9px}
+li button.star.on{color:var(--warn);border-color:var(--warn)}
+.pbar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden;margin:8px 0}
+.pbar>div{height:100%;background:var(--acc)}
+li button.dk.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.acts{flex-wrap:wrap;justify-content:flex-end}
+.key{font-size:13px;color:var(--mute);margin:8px 0 0}
+.key i{display:inline-block;width:18px;border-top:2px dashed var(--warn);vertical-align:middle;margin-right:4px}
+.bar{background:var(--acc);border-radius:4px 4px 0 0;min-height:2px;color:#fff;font-weight:600;font-size:12px}
+.colors{display:flex;gap:8px;flex-wrap:wrap;font-size:14px}
+.colors span{border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+li:first-child{border-top:0}
+li small{color:var(--mute);display:block}
+li button{padding:4px 10px;background:transparent;color:var(--mute);border:1px solid var(--line)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.filters button{padding:4px 10px;font-size:14px;background:transparent;color:var(--ink);border:1px solid var(--line)}
+.filters button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+</style>
+</head>
+<body>
+<h1>Draft tracker</h1>
+
+<section>
+  <form id="f" class="row">
+    <input type="text" id="name" placeholder="Card name" autocomplete="off" autocapitalize="words" list="sug" aria-label="Card name">
+    <datalist id="sug"></datalist>
+    <button type="submit">Add pick</button>
+  </form>
+  <div id="manual" class="row">
+    <input type="number" id="mv" min="0" max="16" placeholder="Mana value" aria-label="Mana value">
+    <select id="type" aria-label="Card type"></select>
+    <select id="col" aria-label="Color"></select>
+    <button id="mAdd" type="button">Add manually</button>
+  </div>
+  <p id="msg">Looks up cost and type on Scryfall. If a card isn't found, enter it manually.</p>
+</section>
+
+<section>
+  <h2>Draft progress</h2>
+  <div class="lsel"><label for="pl">Players</label>
+    <input type="number" id="pl" min="2" max="30" value="14" style="width:70px">
+    <label for="ppt">Picks per turn</label>
+    <select id="ppt"><option value="2">2 (Pick-Two)</option><option value="1">1</option></select></div>
+  <div class="pbar"><div id="pfill"></div></div>
+  <div class="split" id="prog"></div>
+  <p class="key" id="ptip"></p>
+</section>
+
+<section>
+  <h2>Deck</h2>
+  <div class="seg" role="radiogroup" aria-label="Stats scope">
+    <label><input type="radio" name="scope" value="all">All picks</label>
+    <label><input type="radio" name="scope" value="deck">Deck only</label>
+  </div>
+  <div class="split" id="deckCount"></div>
+  <p class="key" id="deckNote"></p>
+</section>
+
+<section>
+  <h2>Totals (<span id="total">0</span> <span id="scopeLbl">picks</span>)</h2>
+  <div class="types" id="types"></div>
+</section>
+
+<section>
+  <h2>Mana curve (non-land)</h2>
+  <div class="seg" role="radiogroup" aria-label="Curve style">
+    <label><input type="radio" name="style" value="standard">Standard</label>
+    <label><input type="radio" name="style" value="aggressive">Aggressive</label>
+    <label><input type="radio" name="style" value="slower">Slower</label>
+  </div>
+  <div class="curve" id="curve"></div>
+  <p class="key" id="key"></p>
+</section>
+
+<section>
+  <h2>Creature curve (<span id="ccount">0</span>)</h2>
+  <div class="curve" id="ccurve"></div>
+  <p class="key" id="ckey"></p>
+</section>
+
+<section>
+  <h2>Colors</h2>
+  <div class="colors" id="colors"></div>
+</section>
+
+<section>
+  <h2>Spell roles (non-creature)</h2>
+  <div class="types" id="roles"></div>
+  <p class="key">Roles are guessed from card text. Change any on the pick list.</p>
+</section>
+
+<section>
+  <h2>Land split</h2>
+  <div class="lsel"><label for="lc">Lands in deck</label>
+    <select id="lc"><option>16</option><option selected>17</option><option>18</option></select></div>
+  <div class="split" id="split"></div>
+  <p class="key" id="splitNote"></p>
+</section>
+
+<section>
+  <h2>Picks</h2>
+  <div class="filters" id="filters"></div>
+  <ul id="list"></ul>
+  <div class="row" style="margin-top:10px">
+    <button class="ghost" id="copy" type="button">Copy list</button>
+    <button class="ghost" id="reset" type="button">Reset draft</button>
+  </div>
+</section>
+
+<script>
+const TYPES=["Creature","Instant","Sorcery","Enchantment","Artifact","Planeswalker","Battle","Land"];
+const COLORS={W:"White",U:"Blue",B:"Black",R:"Red",G:"Green",C:"Colorless",M:"Multicolor"};
+const KEY="draft-picks-v1",SKEY="draft-style-v1";
+const STYLES={standard:[0,3,6,5,4,3,2],aggressive:[0,4,8,5,3,2,1],slower:[0,2,4,5,5,4,3]};
+let style="standard",scope="all";
+const CSTYLES={standard:[0,2,5,4,2,1,1],aggressive:[0,3,6,4,2,1,0],slower:[0,1,4,4,3,2,2]};
+try{const v=localStorage.getItem("draft-scope-v1");if(v==="deck")scope="deck"}catch(e){}
+const pool=()=>scope==="deck"?picks.filter(p=>p.deck):picks;
+function drawCurve(el,list,TARGET){
+  const buckets=[0,1,2,3,4,5,6];
+  const counts=buckets.map(b=>list.filter(p=>b===6?p.mv>=6:p.mv===b).length);
+  const mx=Math.max(1,...counts,...TARGET);
+  el.innerHTML=buckets.map((b,i)=>`<div class="col"><div class="plot"><div class="tgt" style="bottom:${TARGET[i]/mx*100}%;${TARGET[i]?"":"display:none"}"></div><div class="bar" style="height:${counts[i]/mx*100}%">${counts[i]||""}</div></div>${b===6?"6+":b}</div>`).join("");
+}
+const PACKS=3,PER_PACK=14;
+let setup={players:14,ppt:2};
+try{const v=JSON.parse(localStorage.getItem("draft-setup-v1")||"null");if(v&&v.players>=2&&(v.ppt===1||v.ppt===2))setup=v}catch(e){}
+try{const v=localStorage.getItem(SKEY);if(STYLES[v])style=v}catch(e){}
+let picks=[],filter="All";
+try{picks=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(picks))}catch(e){}};
+
+$("type").innerHTML=TYPES.map(t=>`<option>${t}</option>`).join("");
+$("col").innerHTML=Object.entries(COLORS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+
+function setMsg(t){$("msg").textContent=t}
+
+function typeOf(line){
+  for(const t of ["Creature","Land","Planeswalker","Battle","Instant","Sorcery","Enchantment","Artifact"])
+    if(line.includes(t))return t;
+  return "Artifact";
+}
+function colorOf(c){
+  const a=c||[];
+  return a.length===0?"C":a.length>1?"M":a[0];
+}
+
+const ROLES=["Removal","Board wipe","Card draw","Ramp","Counterspell","Trick","Other"];
+function guessRole(type,t){
+  t=(t||"").toLowerCase();
+  if(/(destroy|exile) all|each creature|all creatures|damage to each (creature|opponent and each)/.test(t)&&/destroy|exile|damage|gets? -|-\d+\/-\d+/.test(t))return "Board wipe";
+  if(/counter target/.test(t))return "Counterspell";
+  if(/(destroy|exile) target|damage to (any target|target|up to)|deals? (\d+|x) damage to|target creature gets? -|gets? -\d+\/-\d+|fights|return target (creature|nonland|permanent)/.test(t))return "Removal";
+  if(/draws? (a|two|three|x|\d+) cards?|draw a card|look at the top .* put .* into your hand|investigate/.test(t))return "Card draw";
+  if(/add \{|search your library for (a|up to).*land|land card.*onto the battlefield|treasure token/.test(t))return "Ramp";
+  if(type==="Instant"&&/\+\d+\/\+\d+|indestructible|hexproof|gains?|untap|protection/.test(t))return "Trick";
+  return "Other";
+}
+async function lookup(name){
+  const base="https://api.scryfall.com/";
+  const front=name.split("//")[0].trim();
+  const tries=[
+    base+"cards/search?unique=cards&q="+encodeURIComponent('!"'+front+'"'),
+    base+"cards/search?unique=cards&q="+encodeURIComponent(front+" (set:fra or set:spg)"),
+    base+"cards/named?fuzzy="+encodeURIComponent(front),
+    base+"cards/search?unique=cards&q="+encodeURIComponent(front)
+  ];
+  let c,info="";
+  for(const u of tries){
+    const r=await fetch(u,{headers:{Accept:"application/json"}});
+    const j=await r.json().catch(()=>({}));
+    if(r.ok){c=j.data?j.data[0]:j;if(c)break}
+    info="HTTP "+r.status+(j.details?": "+j.details:"");
+  }
+  if(!c){const e=new Error(info||"no results");e.info=info;throw e}
+  const face=c.card_faces?c.card_faces[0]:c;
+  const tl=c.type_line||face.type_line||"";
+  const type=typeOf(tl.split("//")[0]);
+  const text=c.oracle_text||(c.card_faces||[]).map(f=>f.oracle_text||"").join(" ");
+  return{name:c.name,mv:Math.round(c.cmc||0),type,color:colorOf(c.colors||face.colors),cost:c.mana_cost||face.mana_cost||"",role:guessRole(type,text)};
+}
+
+$("f").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const n=$("name").value.trim();
+  if(!n)return;
+  setMsg("Looking up…");
+  try{
+    const c=await lookup(n);
+    picks.push(c);save();render();
+    $("name").value="";$("manual").classList.remove("show");
+    setMsg("Added "+c.name+".");
+  }catch(err){
+    $("manual").classList.add("show");
+    setMsg(err instanceof TypeError
+      ?"Couldn't reach Scryfall (connection, ad blocker or browser block). Enter the card manually below."
+      :"Scryfall said: "+(err.info||err.message)+". Enter the card manually below.");
+  }
+});
+
+$("mAdd").addEventListener("click",()=>{
+  const n=$("name").value.trim();
+  if(!n||$("mv").value===""){setMsg("Enter a name and mana value.");return}
+  picks.push({name:n,mv:+$("mv").value,type:$("type").value,color:$("col").value,cost:"",role:"Other"});
+  save();render();
+  $("name").value="";$("mv").value="";$("manual").classList.remove("show");
+  setMsg("Added "+n+".");
+});
+
+let st;
+$("name").addEventListener("input",()=>{
+  clearTimeout(st);
+  const q=$("name").value.trim();
+  if(q.length<3)return;
+  st=setTimeout(async()=>{
+    try{
+      const r=await fetch("https://api.scryfall.com/cards/autocomplete?q="+encodeURIComponent(q));
+      const d=await r.json();
+      $("sug").innerHTML=(d.data||[]).map(s=>`<option value="${s.replace(/"/g,"&quot;")}">`).join("");
+    }catch(e){}
+  },250);
+});
+
+function renderProgress(){
+  const n=picks.length,ppt=setup.ppt,total=PACKS*PER_PACK,lap=setup.players*ppt;
+  $("pfill").style.width=Math.min(100,n/total*100)+"%";
+  const tip=lap>=PER_PACK
+    ?"No wheel: each pack runs out after "+Math.ceil(PER_PACK/ppt)+" players, so it never comes back to you. Every pick is a one-time choice, so take the best card for your deck."
+    :"Packs wheel: a pack returns to you with about "+(PER_PACK-lap)+" cards left, so take your best card first and expect more later.";
+  $("ptip").textContent=tip+" You'll make "+total+" picks ("+PACKS+" packs of "+PER_PACK+"), about "+(total-23)+" more than the 23 you need.";
+  if(n>=total){$("prog").textContent="Draft done: "+n+" picks. Time to build 40 cards.";return}
+  const round=Math.floor(n/PER_PACK)+1,inR=n%PER_PACK;
+  const rem=ppt-(inR%ppt);
+  $("prog").textContent="Pack "+round+" of "+PACKS+" · "+inR+"/"+PER_PACK+" picked · "+(inR%ppt?"take "+rem+" more this turn":"take "+ppt+" next");
+}
+const isSpell=p=>p.type!=="Creature"&&p.type!=="Land";
+const BASIC={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"};
+function renderLands(){
+  const total=+$("lc").value,pips={},cards={};
+  pool().filter(p=>p.type!=="Land").forEach(p=>{
+    const m=(p.cost||"").match(/\{[^}]+\}/g)||[];
+    const seen=new Set();
+    m.forEach(sym=>{(sym.match(/[WUBRG]/g)||[]).forEach(k=>{pips[k]=(pips[k]||0)+1;seen.add(k)})});
+    if(!m.length&&BASIC[p.color]){pips[p.color]=(pips[p.color]||0)+1;seen.add(p.color)}
+    seen.forEach(k=>cards[k]=(cards[k]||0)+1);
+  });
+  const ks=Object.keys(pips);
+  if(!ks.length){$("split").textContent="Pick some colored cards first";$("splitNote").textContent="";return}
+  const sum=ks.reduce((a,k)=>a+pips[k],0);
+  const a={};let used=0;
+  ks.forEach(k=>{a[k]=Math.floor(total*pips[k]/sum);used+=a[k]});
+  ks.sort((x,y)=>(total*pips[y]/sum-a[y])-(total*pips[x]/sum-a[x]));
+  for(let i=0;used<total;i++,used++)a[ks[i%ks.length]]++;
+  ks.sort((x,y)=>pips[y]-pips[x]);
+  const splash=[];
+  ks.forEach(k=>{if(cards[k]<=3&&a[k]<3){const need=3-a[k];a[k]=3;const big=ks[0];a[big]-=need}});
+  ks.forEach(k=>{if(cards[k]<=3)splash.push(BASIC[k])});
+  $("split").textContent=ks.map(k=>BASIC[k]+" "+a[k]).join(" · ");
+  $("splitNote").textContent="Based on mana symbols across "+pool().filter(p=>p.type!=="Land").length+" non-land "+(scope==="deck"?"deck cards":"picks")+"."+(splash.length?" "+splash.join(", ")+" looks like a splash (3 or fewer cards).":"");
+}
+function render(){
+  renderProgress();
+  const P=pool();
+  $("total").textContent=P.length;$("scopeLbl").textContent=scope==="deck"?"in deck":"picks";
+  const nlDeck=picks.filter(p=>p.deck&&p.type!=="Land").length;
+  $("deckCount").textContent="In deck: "+nlDeck+" of 23 non-land cards";
+  $("deckNote").textContent=!picks.some(p=>p.deck)?"Tap “+ Deck” on a pick to add it to your 40-card deck, then switch to Deck only to see its stats."
+    :nlDeck<23?"Add "+(23-nlDeck)+" more non-land card"+(23-nlDeck===1?"":"s")+" (with 17 lands)."
+    :nlDeck>23?"Cut "+(nlDeck-23)+" to reach 23 (with 17 lands).":"Right on 23. Add 17 basics.";
+  const n=t=>P.filter(p=>p.type===t).length;
+  const creatures=n("Creature"),lands=n("Land");
+  const spells=P.length-creatures-lands;
+  const tile=(label,v,hint,cls)=>`<div class="t ${cls||""}"><b>${v}</b> ${label}<small>${hint}</small></div>`;
+  const rng=(v,lo,hi)=>v>=lo&&v<=hi?"ok":"warn";
+  $("types").innerHTML=
+    tile("Creatures",creatures,"target 14–17",rng(creatures,14,17))+
+    tile("Spells",spells,"target 6–9",rng(spells,6,9))+
+    tile("Lands picked",lands,"basics fill the rest")+
+    tile("Playables",creatures+spells,"you need ~23");
+
+  const nl=P.filter(p=>p.type!=="Land");
+  const TARGET=STYLES[style],CT=CSTYLES[style];
+  drawCurve($("curve"),nl,TARGET);
+  const cr=P.filter(p=>p.type==="Creature");
+  $("ccount").textContent=cr.length;
+  drawCurve($("ccurve"),cr,CT);
+  $("ckey").innerHTML="<i></i>Target for ~"+CT.reduce((x,y)=>x+y,0)+" creatures at MV 1 / 2 / 3 / 4 / 5 / 6+: "+CT.slice(1).join(" / ");
+
+  $("key").innerHTML="<i></i>Target for ~23 non-land cards at MV 1 / 2 / 3 / 4 / 5 / 6+: "+TARGET.slice(1).join(" / ");
+  const sp=P.filter(isSpell);
+  const rc=r=>sp.filter(p=>(p.role||"Other")===r).length;
+  const rt=(r,hint,cls)=>`<div class="t ${cls||""}"><b>${rc(r)}</b> ${r}<small>${hint}</small></div>`;
+  $("roles").innerHTML=ROLES.map(r=>r==="Removal"?rt(r,"aim for 3+",rc(r)>=3?"ok":"warn")
+    :r==="Board wipe"?rt(r,"0–1 is plenty")
+    :r==="Card draw"?rt(r,"1–3 is nice",rc(r)>=1?"ok":"")
+    :rt(r,"")).join("");
+  renderLands();
+  const cc={};P.forEach(p=>{if(p.type!=="Land")cc[p.color]=(cc[p.color]||0)+1});
+  $("colors").innerHTML=Object.keys(cc).length?Object.entries(cc).map(([k,v])=>`<span>${COLORS[k]} ${v}</span>`).join(""):"<span>No picks yet</span>";
+
+  const fl=["All",...(picks.some(p=>p.deck)?["✓ In deck"]:[]),...(picks.some(p=>p.star)?["★ Top"]:[]),...TYPES.filter(t=>n(t))];
+  if(!fl.includes(filter))filter="All";
+  $("filters").innerHTML=fl.map(f=>`<button type="button" class="${f===filter?"on":""}" data-f="${f}">${f}</button>`).join("");
+  const shown=picks.map((p,i)=>({p,i})).filter(x=>filter==="All"||(filter==="★ Top"?x.p.star:filter==="✓ In deck"?x.p.deck:x.p.type===filter))
+    .sort((a,b)=>a.p.mv-b.p.mv||a.p.name.localeCompare(b.p.name));
+  $("list").innerHTML=shown.map(({p,i})=>`<li><div>${p.name.replace(/</g,"&lt;")}<small>${p.type} · MV ${p.mv} · ${COLORS[p.color]}</small>${isSpell(p)?`<select data-role="${i}" aria-label="Role for ${p.name.replace(/"/g,"")}">${ROLES.map(r=>`<option${r===(p.role||"Other")?" selected":""}>${r}</option>`).join("")}</select>`:""}</div><div class="acts"><button type="button" class="star${p.star?" on":""}" data-star="${i}" aria-pressed="${!!p.star}" aria-label="Top pick: ${p.name.replace(/"/g,"")}">${p.star?"★":"☆"}</button><button type="button" class="dk${p.deck?" on":""}" data-deck="${i}" aria-pressed="${!!p.deck}">${p.deck?"✓ Deck":"+ Deck"}</button><button type="button" data-rm="${i}" aria-label="Remove ${p.name.replace(/"/g,"")}">Remove</button></div></li>`).join("")||"<li><small>Add your first pick above.</small></li>";
+}
+
+$("pl").value=setup.players;$("ppt").value=setup.ppt;
+const saveSetup=()=>{const p=Math.max(2,Math.min(30,+$("pl").value||2));setup={players:p,ppt:+$("ppt").value};try{localStorage.setItem("draft-setup-v1",JSON.stringify(setup))}catch(e){}render()};
+$("pl").addEventListener("change",saveSetup);$("ppt").addEventListener("change",saveSetup);
+$("list").addEventListener("click",e=>{const i=e.target.dataset.star;if(i!==undefined){picks[+i].star=!picks[+i].star;save();render()}});
+$("list").addEventListener("click",e=>{const i=e.target.dataset.deck;if(i!==undefined){picks[+i].deck=!picks[+i].deck;save();render()}});
+document.querySelectorAll('input[name=scope]').forEach(r=>{
+  r.checked=r.value===scope;
+  r.addEventListener("change",()=>{scope=r.value;try{localStorage.setItem("draft-scope-v1",scope)}catch(e){}render()});
+});
+$("lc").addEventListener("change",renderLands);
+$("list").addEventListener("change",e=>{const i=e.target.dataset.role;if(i!==undefined){picks[+i].role=e.target.value;save();render()}});
+$("filters").addEventListener("click",e=>{const f=e.target.dataset.f;if(f){filter=f;render()}});
+$("list").addEventListener("click",e=>{const i=e.target.dataset.rm;if(i!==undefined){picks.splice(+i,1);save();render()}});
+$("reset").addEventListener("click",()=>{if(confirm("Clear all picks?")){picks=[];save();render()}});
+$("copy").addEventListener("click",async()=>{
+  const txt=picks.map(p=>"1 "+p.name).join("\n");
+  try{await navigator.clipboard.writeText(txt);setMsg("List copied.")}catch(e){setMsg("Copy failed. Select the picks manually.")}
+});
+document.querySelectorAll('input[name=style]').forEach(r=>{
+  r.checked=r.value===style;
+  r.addEventListener("change",()=>{style=r.value;try{localStorage.setItem(SKEY,style)}catch(e){}render()});
+});
+render();
+</script>
+</body>
+</html>
